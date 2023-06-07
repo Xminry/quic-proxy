@@ -23,12 +23,16 @@ type ClientQuicConnectionManager struct {
 	mu              sync.Mutex
 	lastSent        time.Time
 	lastRecv        time.Time
+	stopChan        chan struct{}
+	stopped         bool
 }
 
 func NewClientQuicConnectionManager(addr string, tlsConf *tls.Config) *ClientQuicConnectionManager {
 	return &ClientQuicConnectionManager{
-		addr:    addr,
-		tlsConf: tlsConf,
+		addr:     addr,
+		tlsConf:  tlsConf,
+		stopChan: make(chan struct{}),
+		stopped:  false,
 	}
 }
 
@@ -122,6 +126,8 @@ func (cqcm *ClientQuicConnectionManager) MonitorConnection() {
 
 	for {
 		select {
+		case <-cqcm.stopChan:
+			return
 		case <-heartbeatTicker.C:
 			ctx, cancel := context.WithTimeout(context.Background(), heartbeatTimeout)
 			err := cqcm.SendHeartbeat(ctx)
@@ -134,5 +140,21 @@ func (cqcm *ClientQuicConnectionManager) MonitorConnection() {
 				}
 			}
 		}
+	}
+}
+
+func (cqcm *ClientQuicConnectionManager) Stop() {
+	cqcm.mu.Lock()
+	if cqcm.stopped {
+		cqcm.mu.Unlock()
+		return
+	}
+
+	cqcm.stopped = true
+	cqcm.mu.Unlock()
+
+	close(cqcm.stopChan)
+	if cqcm.QuicConn != nil {
+		cqcm.QuicConn.CloseWithError(0, "connection manager stopped")
 	}
 }

@@ -49,6 +49,7 @@ func (sqcm *ServerQuicConnectionManager) HandleQUICConnection() {
 
 func (sqcm *ServerQuicConnectionManager) HandleStream(stream quic.Stream) {
 	defer func() {
+		recover()
 		if stream != nil {
 			stream.Close()
 		}
